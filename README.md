@@ -1,5 +1,28 @@
 # timeline-r1
 
+## Install on your r1 — scan this
+
+<p align="center">
+  <img src="docs/install-qr.png" alt="Scan with your r1 to install Timeline" width="260" />
+</p>
+
+**On your r1:** open the creations card → **add via QR code** → scan the code
+above. Timeline installs as a tile. (Because the app is hosted on GitHub Pages,
+not by Rabbit, the r1 asks you to confirm an untrusted source — that is expected.)
+
+The code encodes Rabbit's creation descriptor for the app hosted at
+<https://stoicswe.github.io/timeline-r1/index.html>. If you would rather use a
+link than the image, Rabbit's own share page shows the same code:
+
+```
+https://www.rabbit.tech/share_creation?title=Timeline&description=A%20day-by-day%20timeline%20of%20what%20you%27ve%20discussed%20with%20the%20r1%20and%20OS3.&url=https%3A%2F%2Fstoicswe.github.io%2Ftimeline-r1%2Findex.html&themeColor=%23FE5000
+```
+
+Installing the app is only half of it — it then needs your own OS3 endpoint
+(below). Installing the app alone grants it no access to your OS3 data.
+
+---
+
 A day-by-day timeline for the Rabbit r1: one card per **completed** day of what
 you have discussed with the r1 / OS3. Wheel to move through time, side button to
 open a card. Built as a self-contained r1 creation plus a small OS3-side endpoint.
@@ -31,13 +54,16 @@ OS3's own tools. The local endpoint only *serves* the file that task writes.
 
 | path | role |
 |---|---|
-| `install.sh` | **one-command installer** for Linux / macOS — stands up the endpoint + tunnel, verifies, prints the pairing details |
+| `docs/install-qr.png` | the QR above — Rabbit's creation descriptor for the hosted app |
+| `install.sh` | **one-command installer** for Linux / macOS — stands up the endpoint + tunnel, verifies, prints the pairing details and the single OS3 paste |
 | `install.ps1` | **one-command installer** for Windows (PowerShell) — same, using a per-user Scheduled Task |
-| `creation/` | the creation source — `index.html`, `style.css`, `app.js`, `icon.svg` |
+| `creation/` | the creation source — `index.html`, `style.css`, `app.js`, `icon.svg` (published to GitHub Pages) |
 | `server/timeline-server.py` | the read-only endpoint (CORS, `?since=`, optional token check) |
 | `server/supervise.sh` | keeps the endpoint and tunnel up; republishes the pointer when the tunnel URL changes |
 | `server/supervise.ps1` | the same supervisor for Windows |
-| `server/generate-timeline.md` | spec for the OS3-side generator task |
+| `server/os3-setup-prompt.md` | the single self-contained OS3 paste (the one manual step) |
+| `server/generate-timeline.md` | the generator spec the paste carries |
+| `.github/workflows/pages.yml` | publishes `creation/` to GitHub Pages |
 
 `creation/app.js` here is the **distribution build**: the two personal constants
 (a pointer gist and a fallback endpoint) are blank, so it ships with no owner's
@@ -60,7 +86,7 @@ configuration baked in. A new owner pairs it on the device (below).
 
 You need a computer that can reach your own OS3 context and stay online.
 
-### One-command install (recommended)
+### One command, then one paste
 
 Clone the repo and run the installer for your platform. It is readable and
 non-destructive: it prints its plan and asks before changing anything, and it
@@ -94,28 +120,43 @@ The installer:
 6. installs the supervisor (cron on Linux/macOS, a per-user Scheduled Task on
    Windows) so the endpoint and tunnel restart if either drops;
 7. prints the **endpoint URL** and **pairing token** to paste into the creation,
-   plus a `curl`/`Invoke-WebRequest` line to verify, and the one thing only you
-   can do on the OS3 side (below).
+   a `curl`/`Invoke-WebRequest` line to verify, and the **single OS3 paste** (next).
 
 Useful flags: `--dir`, `--port`, `--token`, `--no-supervisor`, `--no-tunnel`,
 `--pointer`, `--force`, `--yes`, `--dry-run` (`install.ps1` takes the same as
 `-Dir`, `-Port`, …). Run `./install.sh --help` for the list.
 
-> **One step stays manual, by design.** OS3's journal, recordings and memory are
-> readable only through OS3's own tools, so the day-cards must be produced by an
-> **OS3 scheduled task**, not by the installer. After installing, create a daily
-> OS3 task whose prompt is the contents of
-> `~/.timeline-r1/server/generate-timeline.md`; it writes
-> `~/.timeline-r1/data/timeline.json`, which the endpoint serves. Until it runs
-> once the timeline is empty (`/health` shows `cardCount: 0`).
+### The one manual step: one paste into OS3
+
+Everything on your machine is done by the installer. The **only** step left is
+one paste into OS3, and it is irreducible: OS3's journal, recordings and memory
+live in OS3's cloud and are readable only through OS3's own tools, and a
+scheduled task belongs to your OS3 account — a plain shell script on your
+machine cannot create one. So the installer prints a **single self-contained
+prompt** (also saved to `~/.timeline-r1/server/os3-setup-prompt.ready.md`):
+
+1. copy the block between `----- BEGIN OS3 PASTE -----` and `----- END OS3 PASTE -----`;
+2. paste it into OS3 once;
+3. OS3 creates the daily generator schedule (08:00 UTC) for you and replies with
+   its id and next fire time.
+
+That prompt already carries the full generator spec, the exact output path on
+your machine, and the schedule, so OS3 needs nothing else from you. After the
+task runs once, the timeline fills in. Until then it is empty
+(`/health` shows `cardCount: 0`).
+
+> There is no programmatic way for a local script to register a schedule in your
+> OS3 account, so this paste is the honest minimum. One command on your machine,
+> plus this one paste, and nothing else.
 
 ### Manual setup (what the installer automates)
 
 If you would rather do it by hand:
 
 1. **Generate the cards.** Create an OS3 scheduled task from
-   `server/generate-timeline.md`. It reads your journal, recordings and memory,
-   groups by completed day, and writes `data/timeline.json`. Run it daily.
+   `server/generate-timeline.md` (or paste `server/os3-setup-prompt.md`). It
+   reads your journal, recordings and memory, groups by completed day, and writes
+   `data/timeline.json`. Run it daily.
 2. **Run the endpoint.** On that machine:
    ```sh
    TIMELINE_PORT=8791 python3 server/timeline-server.py
@@ -132,28 +173,34 @@ If you would rather do it by hand:
 4. **Keep it up.** Run `server/supervise.sh` from cron (`*/5 * * * *` and
    `@reboot`), or `server/supervise.ps1` as a Scheduled Task on Windows. It
    restarts the endpoint or tunnel if either is down.
-5. **Pair your r1.** Install the creation on your r1, open it, and on the pairing
-   screen paste your endpoint URL and (if you set one) your pairing token. Tap
-   **test** — it reports success, round-trip time and card count. Tap **save** to
-   store them and sync. The endpoint is kept in plain storage, the token in the
-   creation's secure storage, and the token is sent as an `Authorization: Bearer`
-   header on every fetch.
+5. **Pair your r1.** Install the creation on your r1 (QR above), open it, and on
+   the pairing screen paste your endpoint URL and (if you set one) your pairing
+   token. Tap **test** — it reports success, round-trip time and card count. Tap
+   **save** to store them and sync. The endpoint is kept in plain storage, the
+   token in the creation's secure storage, and the token is sent as an
+   `Authorization: Bearer` header on every fetch.
 
    To re-pair later, tap the `⋯` in the header or hold the side button. The screen
    pre-fills the current values, and saving a new endpoint keeps your accumulated
    timeline.
 
-### Installing the creation on an r1
+### Installing the creation on an r1 (detail)
 
-Host `creation/` on any static HTTPS host, then open Rabbit's share link with your
-address filled in (URL-encode each value):
+The creation is hosted on GitHub Pages from this repo at
+<https://stoicswe.github.io/timeline-r1/index.html>, published by
+`.github/workflows/pages.yml`. Rabbit's install route is a QR code that encodes
+the creation descriptor as JSON:
 
+```json
+{"title":"Timeline","url":"https://stoicswe.github.io/timeline-r1/index.html","description":"A day-by-day timeline of what you've discussed with the r1 and OS3.","themeColor":"#FE5000"}
 ```
-https://www.rabbit.tech/share_creation?title=Timeline&description=<desc>&url=<your index.html>&themeColor=%23FE5000
-```
 
-Scan the QR code it shows with your r1, and confirm the untrusted source when
-asked (the host is not Rabbit's).
+`docs/install-qr.png` is exactly that payload. On the r1, open the creations card,
+tap **add via QR code**, and scan it. Confirm the untrusted source when asked
+(the host is not Rabbit's). The same code is shown by Rabbit's own share page
+(link above). Rabbit's public gallery (`rabbit.tech/creations`) is the other
+install route, but listing there depends on Rabbit's own submission process and
+is not something this repo controls.
 
 ## Endpoint notes
 

@@ -11,8 +11,9 @@
 #      verifies the endpoint is actually reachable through the tunnel;
 #   6. registers the supervisor as a per-user Scheduled Task (every 5 min +
 #      at logon) — no admin needed;
-#   7. prints the endpoint URL and token to paste into the r1 creation, and the
-#      one thing only you can do on the OS3 side (create the daily generator).
+#   7. prints the endpoint URL and token to paste into the r1 creation, plus a
+#      single self-contained prompt to paste into OS3 once (the only manual step)
+#      so OS3 creates the daily generator schedule.
 #
 # Reviewable and non-destructive: it prints its plan and asks before changing
 # anything, and it will not touch an existing install without -Force.
@@ -113,6 +114,7 @@ Say "  tunnel          : $(if ($NoTunnel) { 'skipped (-NoTunnel)' } else { 'Clou
 Say "  pairing token   : $(if ($Token) { 'provided' } else { 'will be generated (32 random bytes)' })"
 Say "  supervisor      : $(if ($NoSupervisor) { 'skipped (-NoSupervisor)' } else { 'Scheduled Task: every 5 min + at logon (no admin)' })"
 Say "  pointer gist    : $(if ($Pointer) { 'will be published (needs gh)' } else { 'not published (pairing UI does not need one)' })"
+Say "  final step      : one paste into OS3 (creates the daily generator schedule)"
 Say "  python          : $(if ($Python) { $Python } else { 'NOT FOUND - install Python 3.8+ first (below)' })"
 Say "  cloudflared     : $(if ($NeedCfd) { "not found - will download to $Dir\bin\cloudflared.exe" } else { $CfdBin })"
 if ($Existing -and -not $Force) {
@@ -148,6 +150,9 @@ foreach ($sub in @("server", "server\.state", "data", "bin")) {
 Copy-Item (Join-Path $SrcServer "timeline-server.py")   (Join-Path $Dir "server\timeline-server.py") -Force
 Copy-Item (Join-Path $SrcServer "supervise.ps1")        (Join-Path $Dir "server\supervise.ps1") -Force
 Copy-Item (Join-Path $SrcServer "generate-timeline.md") (Join-Path $Dir "server\generate-timeline.md") -Force
+if (Test-Path (Join-Path $SrcServer "os3-setup-prompt.md")) {
+  Copy-Item (Join-Path $SrcServer "os3-setup-prompt.md") (Join-Path $Dir "server\os3-setup-prompt.md") -Force
+}
 
 # --- token -------------------------------------------------------------------
 if (-not $Token) {
@@ -285,6 +290,17 @@ if (-not $NoSupervisor) {
 }
 
 # --- next steps --------------------------------------------------------------
+# Render the single self-contained OS3 paste with this install's real paths.
+$Os3Prompt = Join-Path $Dir "server\os3-setup-prompt.md"
+$Os3Ready  = Join-Path $Dir "server\os3-setup-prompt.ready.md"
+if (Test-Path $Os3Prompt) {
+  (Get-Content $Os3Prompt -Raw) `
+    -replace '\{\{DATA_FILE\}\}', (Join-Path $Dir "data\timeline.json") `
+    -replace '\{\{PORT\}\}', "$Port" `
+    -replace '\{\{BASE\}\}', $Dir |
+    Set-Content -Encoding UTF8 $Os3Ready
+}
+
 Step "Setup complete"
 Say ""
 if ($Url) { Say "  Endpoint URL : $Url" } else { Say "  Endpoint URL : (no tunnel - local only: http://${BindHost}:$Port)" }
@@ -299,12 +315,28 @@ Say ""
 Say "Verify from this machine:"
 Say "    Invoke-WebRequest -Headers @{Authorization='Bearer $Token'} $(if ($Url) { $Url } else { "http://${BindHost}:$Port" })/health"
 Say ""
-Say "Still to do on the OS3 side - only OS3 can read your journal, recordings and"
-Say "memory, so the day-cards must be produced by an OS3 scheduled task:"
-Say "    In OS3, create a daily scheduled task whose prompt is the contents of"
-Say "      $Dir\server\generate-timeline.md"
-Say "    It writes $Dir\data\timeline.json, which this endpoint serves."
-Say "    Until it runs once, the timeline is empty (health shows cardCount 0)."
+Say "----------------------------------------------------------------------"
+Say "ONE LAST STEP - one paste into OS3 (this is the only manual step left)."
+Say ""
+Say "OS3's journal, recordings and memory live in OS3's cloud and are readable"
+Say "only through OS3's own tools, so the day-cards must be produced by an OS3"
+Say "scheduled task. A shell script on this machine cannot create a schedule in"
+Say "your OS3 account, so this one paste is irreducible. It is self-contained:"
+Say "paste the whole block below into OS3 once and OS3 creates the daily"
+Say "generator for you. Nothing else is needed."
+Say ""
+Say "  Ready-to-paste file: $Os3Ready"
+Say ""
+if (Test-Path $Os3Ready) {
+  Say "----- BEGIN OS3 PASTE -----"
+  Get-Content $Os3Ready | ForEach-Object { Say $_ }
+  Say "----- END OS3 PASTE -----"
+} else {
+  Say "  (prompt template not found; see $Dir\server\generate-timeline.md)"
+}
+Say ""
+Say "Until the OS3 task runs once, the timeline is empty (health shows cardCount 0)."
+Say "----------------------------------------------------------------------"
 Say ""
 Say "Supervisor : $(if ($NoSupervisor) { 'not registered (-NoSupervisor)' } else { "Scheduled Task 'timeline-r1 supervisor'" })"
 Say "Logs       : $Dir\server\endpoint.log , $Dir\server\.state\tunnel.err.log"

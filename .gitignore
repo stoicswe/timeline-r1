@@ -16,3 +16,7 @@ server/endpoint.log
 .DS_Store
 Thumbs.db
 *.swp
+
+# Python bytecode
+__pycache__/
+*.pyc

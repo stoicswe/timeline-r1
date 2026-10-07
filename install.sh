@@ -11,8 +11,9 @@
 #   5. waits out the tunnel-routability delay the pilot found (~60 s) and
 #      verifies the endpoint is actually reachable through the tunnel;
 #   6. installs the supervisor on cron (every 5 min + @reboot);
-#   7. prints the endpoint URL and token to paste into the r1 creation, and the
-#      one thing only you can do on the OS3 side (create the daily generator).
+#   7. prints the endpoint URL and token to paste into the r1 creation, plus a
+#      single self-contained prompt to paste into OS3 once (the only manual step)
+#      so OS3 creates the daily generator schedule.
 #
 # It is reviewable and non-destructive: it prints its plan and asks before
 # changing anything, and it will not touch an existing install without --force.
@@ -132,6 +133,7 @@ say "  tunnel          : $([ "$DO_TUNNEL" -eq 1 ] && echo 'Cloudflare quick tunn
 say "  pairing token   : $([ -n "$TOKEN" ] && echo 'provided' || echo 'will be generated (32 random bytes)')"
 say "  supervisor      : $([ "$DO_SUPERVISOR" -eq 1 ] && echo 'cron: every 5 min + @reboot (no sudo)' || echo 'skipped (--no-supervisor)')"
 say "  pointer gist    : $([ "$POINTER" -eq 1 ] && echo 'will be published (needs gh)' || echo 'not published (pairing UI does not need one)')"
+say "  final step      : one paste into OS3 (creates the daily generator schedule)"
 if [ -n "$PYTHON" ]; then
   say "  python          : $PYTHON"
 else
@@ -181,6 +183,7 @@ mkdir -p "$INSTALL_DIR/server" "$INSTALL_DIR/data" "$INSTALL_DIR/bin" "$INSTALL_
 cp "$SRC_SERVER/timeline-server.py" "$INSTALL_DIR/server/timeline-server.py"
 cp "$SRC_SERVER/supervise.sh"       "$INSTALL_DIR/server/supervise.sh"
 cp "$SRC_SERVER/generate-timeline.md" "$INSTALL_DIR/server/generate-timeline.md"
+[ -f "$SRC_SERVER/os3-setup-prompt.md" ] && cp "$SRC_SERVER/os3-setup-prompt.md" "$INSTALL_DIR/server/os3-setup-prompt.md"
 [ -f "$SRC_SERVER/supervise.ps1" ] && cp "$SRC_SERVER/supervise.ps1" "$INSTALL_DIR/server/supervise.ps1"
 chmod +x "$INSTALL_DIR/server/supervise.sh"
 
@@ -327,6 +330,17 @@ if [ "$DO_SUPERVISOR" -eq 1 ]; then
 fi
 
 # --- next steps --------------------------------------------------------------
+# Render the single self-contained OS3 paste with this install's real paths, so
+# the owner pastes one prompt and OS3 creates the daily generator schedule.
+OS3_PROMPT="$INSTALL_DIR/server/os3-setup-prompt.md"
+OS3_READY="$INSTALL_DIR/server/os3-setup-prompt.ready.md"
+if [ -f "$OS3_PROMPT" ]; then
+  sed -e "s#{{DATA_FILE}}#$INSTALL_DIR/data/timeline.json#g" \
+      -e "s#{{PORT}}#$PORT#g" \
+      -e "s#{{BASE}}#$INSTALL_DIR#g" \
+      "$OS3_PROMPT" >"$OS3_READY"
+fi
+
 step "Setup complete"
 say ""
 if [ -n "$URL" ]; then
@@ -345,12 +359,28 @@ say ""
 say "Verify from this machine:"
 say "    curl -H \"Authorization: Bearer $TOKEN\" ${URL:-http://$HOST:$PORT}/health"
 say ""
-say "Still to do on the OS3 side — only OS3 can read your journal, recordings and"
-say "memory, so the day-cards must be produced by an OS3 scheduled task:"
-say "    In OS3, create a daily scheduled task whose prompt is the contents of"
-say "      $INSTALL_DIR/server/generate-timeline.md"
-say "    It writes $INSTALL_DIR/data/timeline.json, which this endpoint serves."
-say "    Until it runs once, the timeline is empty (health shows cardCount 0)."
+say "----------------------------------------------------------------------"
+say "ONE LAST STEP — one paste into OS3 (this is the only manual step left)."
+say ""
+say "OS3's journal, recordings and memory live in OS3's cloud and are readable"
+say "only through OS3's own tools, so the day-cards must be produced by an OS3"
+say "scheduled task. A shell script on this machine cannot create a schedule in"
+say "your OS3 account, so this one paste is irreducible. It is self-contained:"
+say "paste the whole block below into OS3 once and OS3 creates the daily"
+say "generator for you. Nothing else is needed."
+say ""
+say "  Ready-to-paste file: $OS3_READY"
+say ""
+if [ -f "$OS3_READY" ]; then
+  say "----- BEGIN OS3 PASTE -----"
+  cat "$OS3_READY"
+  say "----- END OS3 PASTE -----"
+else
+  say "  (prompt template not found; see $INSTALL_DIR/server/generate-timeline.md)"
+fi
+say ""
+say "Until the OS3 task runs once, the timeline is empty (health shows cardCount 0)."
+say "----------------------------------------------------------------------"
 say ""
 say "Supervisor : $([ "$DO_SUPERVISOR" -eq 1 ] && echo "cron -> $INSTALL_DIR/server/supervise.sh" || echo 'not installed (--no-supervisor)')"
 say "Logs       : $INSTALL_DIR/server/endpoint.log , $INSTALL_DIR/server/.state/tunnel.log"
