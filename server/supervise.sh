@@ -1,6 +1,7 @@
 #!/bin/sh
 # timeline supervisor — keeps the r1 timeline endpoint and its public tunnel up,
-# and republishes the current tunnel URL to the stable pointer the creation reads.
+# and (optionally) republishes the current tunnel URL to the stable pointer the
+# creation reads.
 #
 # Safe to run repeatedly (cron every 5 min, and @reboot). Idempotent:
 #  - starts the endpoint only if it is not already listening
@@ -9,9 +10,14 @@
 #
 # It never reads or writes timeline data itself; it only serves data/timeline.json.
 #
-# Configure these for your own machine (e.g. in the crontab line):
+# Configuration, in order of precedence:
+#   1. environment variables (e.g. set in the crontab line)
+#   2. server/config.env next to this script (written by install.sh)
+#   3. defaults below
+#
 #   TIMELINE_BASE   project directory           (default: this script's parent)
 #   TIMELINE_PORT   endpoint port               (default: 8791)
+#   TIMELINE_HOST   endpoint bind address       (default: 127.0.0.1)
 #   TIMELINE_CFD    path to the cloudflared bin (default: cloudflared on PATH)
 #   POINTER_GIST    gist id the creation reads  (optional; skip pointer if unset)
 #   TIMELINE_TOKEN  pairing token the endpoint requires (optional; open if unset)
@@ -20,31 +26,40 @@ set -u
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 BASE=${TIMELINE_BASE:-$(cd "$HERE/.." && pwd)}
+
+# config.env (written by install.sh) fills in anything not already in the env.
+if [ -f "$HERE/config.env" ]; then
+  # shellcheck disable=SC1090
+  . "$HERE/config.env"
+fi
+
 SERVER="$BASE/server/timeline-server.py"
 STATE="$BASE/server/.state"
 CFD=${TIMELINE_CFD:-cloudflared}
 PORT=${TIMELINE_PORT:-8791}
+HOST=${TIMELINE_HOST:-127.0.0.1}
 LOG="$BASE/server/supervisor.log"
 POINTER_GIST=${POINTER_GIST:-}
 TOKEN=${TIMELINE_TOKEN:-}
+PY=${TIMELINE_PYTHON:-python3}
 
 mkdir -p "$STATE"
 log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" >>"$LOG"; }
 
 # --- endpoint ---------------------------------------------------------------
-if ! curl -fsS -m 5 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
+if ! curl -fsS -m 5 -H "Authorization: Bearer $TOKEN" "http://$HOST:$PORT/health" >/dev/null 2>&1; then
   log "endpoint down; starting"
-  TIMELINE_PORT="$PORT" TIMELINE_TOKEN="$TOKEN" \
+  TIMELINE_PORT="$PORT" TIMELINE_HOST="$HOST" TIMELINE_TOKEN="$TOKEN" \
     TIMELINE_ACCESS_LOG="$STATE/access.jsonl" \
-    setsid nohup python3 "$SERVER" </dev/null >>"$BASE/server/endpoint.log" 2>&1 &
+    nohup "$PY" "$SERVER" </dev/null >>"$BASE/server/endpoint.log" 2>&1 &
   sleep 2
 fi
 
 # --- tunnel -----------------------------------------------------------------
-if ! pgrep -f "cloudflared tunnel --url http://127.0.0.1:$PORT" >/dev/null 2>&1; then
+if ! pgrep -f "cloudflared tunnel --url http://$HOST:$PORT" >/dev/null 2>&1; then
   log "tunnel down; starting"
   : >"$STATE/tunnel.log"
-  setsid nohup "$CFD" tunnel --url "http://127.0.0.1:$PORT" --no-autoupdate \
+  nohup "$CFD" tunnel --url "http://$HOST:$PORT" --no-autoupdate \
     </dev/null >>"$STATE/tunnel.log" 2>&1 &
   # wait up to ~40s for the URL to appear
   i=0

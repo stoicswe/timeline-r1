@@ -31,9 +31,12 @@ OS3's own tools. The local endpoint only *serves* the file that task writes.
 
 | path | role |
 |---|---|
+| `install.sh` | **one-command installer** for Linux / macOS — stands up the endpoint + tunnel, verifies, prints the pairing details |
+| `install.ps1` | **one-command installer** for Windows (PowerShell) — same, using a per-user Scheduled Task |
 | `creation/` | the creation source — `index.html`, `style.css`, `app.js`, `icon.svg` |
 | `server/timeline-server.py` | the read-only endpoint (CORS, `?since=`, optional token check) |
 | `server/supervise.sh` | keeps the endpoint and tunnel up; republishes the pointer when the tunnel URL changes |
+| `server/supervise.ps1` | the same supervisor for Windows |
 | `server/generate-timeline.md` | spec for the OS3-side generator task |
 
 `creation/app.js` here is the **distribution build**: the two personal constants
@@ -57,6 +60,59 @@ configuration baked in. A new owner pairs it on the device (below).
 
 You need a computer that can reach your own OS3 context and stay online.
 
+### One-command install (recommended)
+
+Clone the repo and run the installer for your platform. It is readable and
+non-destructive: it prints its plan and asks before changing anything, and it
+will not touch an existing install without `--force` / `-Force`.
+
+**Linux / macOS:**
+
+```sh
+git clone https://github.com/stoicswe/timeline-r1.git
+cd timeline-r1
+./install.sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+git clone https://github.com/stoicswe/timeline-r1.git
+cd timeline-r1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+The installer:
+
+1. checks for Python 3.8+ and `cloudflared`, and offers to download
+   `cloudflared` into a private folder — **no sudo / admin needed**;
+2. copies the endpoint, supervisor and generator spec into `~/.timeline-r1`;
+3. starts the read-only endpoint with a fresh random pairing token;
+4. starts a Cloudflare quick tunnel to it;
+5. waits out the tunnel-routability delay (~60 s) and **verifies the endpoint is
+   actually reachable through the tunnel** before declaring success;
+6. installs the supervisor (cron on Linux/macOS, a per-user Scheduled Task on
+   Windows) so the endpoint and tunnel restart if either drops;
+7. prints the **endpoint URL** and **pairing token** to paste into the creation,
+   plus a `curl`/`Invoke-WebRequest` line to verify, and the one thing only you
+   can do on the OS3 side (below).
+
+Useful flags: `--dir`, `--port`, `--token`, `--no-supervisor`, `--no-tunnel`,
+`--pointer`, `--force`, `--yes`, `--dry-run` (`install.ps1` takes the same as
+`-Dir`, `-Port`, …). Run `./install.sh --help` for the list.
+
+> **One step stays manual, by design.** OS3's journal, recordings and memory are
+> readable only through OS3's own tools, so the day-cards must be produced by an
+> **OS3 scheduled task**, not by the installer. After installing, create a daily
+> OS3 task whose prompt is the contents of
+> `~/.timeline-r1/server/generate-timeline.md`; it writes
+> `~/.timeline-r1/data/timeline.json`, which the endpoint serves. Until it runs
+> once the timeline is empty (`/health` shows `cardCount: 0`).
+
+### Manual setup (what the installer automates)
+
+If you would rather do it by hand:
+
 1. **Generate the cards.** Create an OS3 scheduled task from
    `server/generate-timeline.md`. It reads your journal, recordings and memory,
    groups by completed day, and writes `data/timeline.json`. Run it daily.
@@ -74,7 +130,8 @@ You need a computer that can reach your own OS3 context and stay online.
    quick tunnel can take up to ~60 s to become routable — wait and retry before
    concluding it failed. (A named tunnel on your own domain is more durable.)
 4. **Keep it up.** Run `server/supervise.sh` from cron (`*/5 * * * *` and
-   `@reboot`). It restarts the endpoint or tunnel if either is down.
+   `@reboot`), or `server/supervise.ps1` as a Scheduled Task on Windows. It
+   restarts the endpoint or tunnel if either is down.
 5. **Pair your r1.** Install the creation on your r1, open it, and on the pairing
    screen paste your endpoint URL and (if you set one) your pairing token. Tap
    **test** — it reports success, round-trip time and card count. Tap **save** to
