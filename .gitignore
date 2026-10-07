@@ -1,0 +1,18 @@
+# Private timeline data — the day-cards are personal and must never be committed.
+data/
+*.jsonl
+
+# Endpoint / tunnel runtime state
+server/.state/
+server/*.log
+server/endpoint.log
+
+# Local configuration and secrets
+.env
+*.token
+*.secret
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp

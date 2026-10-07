@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <title>timeline</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header id="hdr">
+      <span id="hdr-date">—</span>
+      <span class="hdr-right">
+        <span id="hdr-dot" class="dot"></span>
+        <span id="hdr-menu" title="pair">⋯</span>
+      </span>
+    </header>
+
+    <main id="body">
+      <div id="track">
+        <div id="line"></div>
+        <div id="cards"></div>
+      </div>
+      <section id="detail" class="hidden">
+        <div id="detail-date"></div>
+        <div id="detail-text"></div>
+      </section>
+      <div id="empty" class="hidden"></div>
+    </main>
+
+    <footer id="hint">wheel: time · button: open</footer>
+
+    <!-- pairing / re-pairing screen -->
+    <section id="pair" class="hidden">
+      <div class="pair-hdr" id="pair-hdr">connect</div>
+      <div class="pair-sub" id="pair-sub">paste your OS3 endpoint and pairing token</div>
+
+      <label class="fld" id="fld-endpoint">
+        <span class="lbl">endpoint</span>
+        <input
+          id="in-endpoint"
+          type="url"
+          inputmode="url"
+          autocomplete="off"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          placeholder="https://…"
+        />
+      </label>
+
+      <label class="fld" id="fld-token">
+        <span class="lbl">token</span>
+        <input
+          id="in-token"
+          type="text"
+          autocomplete="off"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          placeholder="optional"
+        />
+      </label>
+
+      <div id="pair-status" class="pair-status"></div>
+
+      <div class="pair-actions">
+        <div class="btn" id="btn-test">test</div>
+        <div class="btn" id="btn-save">save</div>
+        <div class="btn ghost" id="btn-back">back</div>
+      </div>
+    </section>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
