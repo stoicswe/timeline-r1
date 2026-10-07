@@ -1,0 +1,36 @@
+# Publish the r1 creation (creation/) to GitHub Pages so it can be installed
+# on an r1 by scanning a QR code. Only the data-free creation source is served;
+# no endpoint, token, pointer or timeline data is ever published.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "creation/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: creation
+      - id: deployment
+        uses: actions/deploy-pages@v4
